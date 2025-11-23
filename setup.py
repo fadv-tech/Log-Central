@@ -38,9 +38,9 @@ def main():
     
     # 1. Clonar repositório
     print(f"\n{Colors.YELLOW}[1/7] Clonando repositório...{Colors.END}")
-    run_command("sudo rm -rf /opt/log-centralizado", "Removendo diretório antigo")
+    run_command("rm -rf /opt/log-centralizado", "Removendo diretório antigo")
     success, output = run_command(
-        "sudo git clone https://github.com/fadv-tech/Log-Central.git /opt/log-centralizado",
+        "git clone https://github.com/fadv-tech/Log-Central.git /opt/log-centralizado",
         "Clonando repositório"
     )
     if success:
@@ -48,8 +48,6 @@ def main():
     else:
         print(f"{Colors.RED}[✗] Erro ao clonar: {output}{Colors.END}")
         return False
-    
-    run_command("sudo chown -R $(whoami):$(whoami) /opt/log-centralizado")
     
     # 2. Instalar dependências
     print(f"\n{Colors.YELLOW}[2/7] Instalando dependências (pode levar 3-5 minutos)...{Colors.END}")
