@@ -1,0 +1,41 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1763901351658,
+      "tag": "0000_crazy_medusa",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1763901392095,
+      "tag": "0001_flashy_bruce_banner",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1763901505492,
+      "tag": "0002_dashing_captain_cross",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1763901774539,
+      "tag": "0003_talented_ozymandias",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1763905377432,
+      "tag": "0004_daily_calypso",
+      "breakpoints": true
+    }
+  ]
+}
