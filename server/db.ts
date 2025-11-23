@@ -9,7 +9,7 @@ let _pool: mysql.Pool | null = null;
 // Connection pool configuration for handling concurrent requests
 const POOL_CONFIG = {
   waitForConnections: true,
-  connectionLimit: 10, // Máximo de conexões simultâneas
+  connectionLimit: 50, // Máximo de conexões simultâneas (aumentado para melhor throughput)
   queueLimit: 0, // Sem limite de fila
   enableKeepAlive: true,
   keepAliveInitialDelayMs: 0,

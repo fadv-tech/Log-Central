@@ -4,11 +4,11 @@
 
 ### 1. Connection Pooling (MySQL)
 
-O sistema implementa **connection pooling** com limite de 10 conexões simultâneas:
+O sistema implementa **connection pooling** com limite de 50 conexões simultâneas:
 
 ```javascript
 const POOL_CONFIG = {
-  connectionLimit: 10,        // Máximo de conexões simultâneas
+  connectionLimit: 50,        // Máximo de conexões simultâneas
   waitForConnections: true,   // Aguarda conexão disponível
   queueLimit: 0,              // Sem limite de fila
   enableKeepAlive: true,      // Mantém conexões vivas
@@ -19,7 +19,7 @@ const POOL_CONFIG = {
 - ✅ Reutiliza conexões (não cria nova a cada requisição)
 - ✅ Evita "connection exhaustion"
 - ✅ Reduz latência de conexão
-- ✅ Suporta até 10 requisições simultâneas ao banco
+- ✅ Suporta até 50 requisições simultâneas ao banco
 
 ### 2. Rate Limiting
 
@@ -61,7 +61,42 @@ app.use(compression()); // Gzip automático
 - ✅ Resposta mais rápida
 - ✅ Automático para cliente que suporta gzip
 
-### 4. Graceful Shutdown
+### 4. Logging Completo de Requisições e Respostas
+
+Todas as requisições e respostas são registradas em arquivo:
+
+```
+logs/
+├── app-2024-11-23.log
+├── app-2024-11-22.log
+└── app-2024-11-21.log
+```
+
+**Formato do Log:**
+```json
+{
+  "timestamp": "2024-11-23T10:30:45.123Z",
+  "level": "INFO",
+  "method": "POST",
+  "path": "/api/trpc/logs.ingest",
+  "statusCode": 200,
+  "duration": 45,
+  "message": "Response sent",
+  "ip": "192.168.1.100"
+}
+```
+
+**Tipos de Log:**
+- ✅ **INFO** - Requisições recebidas e respostas bem-sucedidas
+- ✅ **ERROR** - Erros com stack trace
+- ✅ **WARN** - Avisos e eventos importantes
+- ✅ **DEBUG** - Informações de debug (desenvolvimento)
+
+**Limpeza Automática:**
+- Logs com mais de 7 dias são removidos automaticamente
+- Executado no startup do servidor
+
+### 5. Graceful Shutdown
 
 ```javascript
 process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
@@ -80,7 +115,7 @@ process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
 | Métrica | Valor | Notas |
 |---------|-------|-------|
-| Conexões DB simultâneas | 10 | Limite do pool |
+| Conexões DB simultâneas | 50 | Limite do pool |
 | Requisições API por 15min | 1000 | Rate limit geral |
 | Requisições Log por minuto | 10000 | Rate limit log ingest |
 | Fila de conexão | Ilimitada | Aguarda conexão disponível |
@@ -90,7 +125,7 @@ process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
 **Em um servidor Ubuntu padrão:**
 
-- **Ingestão de logs**: ~1000-2000 logs/segundo
+- **Ingestão de logs**: ~2000-5000 logs/segundo
 - **Busca de logs**: ~100-500 queries/segundo
 - **Gerenciamento**: ~500 requisições/segundo
 
@@ -104,11 +139,12 @@ process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
 ### Backend
 
-1. **Connection Pooling** - Reutiliza conexões
+1. **Connection Pooling** - Reutiliza conexões (50 simultâneas)
 2. **Rate Limiting** - Protege contra abuso
 3. **Compressão** - Reduz tamanho de resposta
-4. **Lazy Loading** - Carrega DB apenas quando necessário
-5. **Índices no Banco** - Queries mais rápidas
+4. **Logging Completo** - Registra todas as requisições/respostas
+5. **Lazy Loading** - Carrega DB apenas quando necessário
+6. **Índices no Banco** - Queries mais rápidas
 
 ### Frontend
 
@@ -126,6 +162,34 @@ CREATE INDEX idx_logs_timestamp ON logs(timestamp);
 CREATE INDEX idx_logs_level ON logs(level);
 CREATE INDEX idx_apiKeys_serverId ON apiKeys(serverId);
 CREATE INDEX idx_logStatistics_serverId_date ON logStatistics(serverId, date);
+```
+
+## Acessar Logs
+
+### Últimas Linhas do Log
+
+```bash
+tail -f logs/app-$(date +%Y-%m-%d).log
+```
+
+### Buscar por Erro
+
+```bash
+grep "ERROR" logs/app-*.log
+```
+
+### Contar Requisições
+
+```bash
+grep "Response sent" logs/app-$(date +%Y-%m-%d).log | wc -l
+```
+
+### Latência Média
+
+```bash
+grep "Response sent" logs/app-$(date +%Y-%m-%d).log | \
+  jq '.duration' | \
+  awk '{sum+=$1; count++} END {print "Média:", sum/count, "ms"}'
 ```
 
 ## Escalabilidade Horizontal
@@ -197,7 +261,7 @@ curl http://localhost:3000/health
 
 ```bash
 # Aumentar limite do pool em server/db.ts
-connectionLimit: 20  # Aumentar de 10 para 20
+connectionLimit: 100  # Aumentar de 50 para 100
 ```
 
 ### "Rate limit exceeded"
@@ -233,6 +297,7 @@ DELETE FROM logs WHERE timestamp < DATE_SUB(NOW(), INTERVAL 90 DAY);
 6. ✅ Archive logs antigos regularmente
 7. ✅ Use HTTPS/TLS
 8. ✅ Configure firewall
+9. ✅ Monitore logs em `./logs`
 
 ### Para Alta Volume (>10k logs/seg)
 
