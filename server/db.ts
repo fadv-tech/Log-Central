@@ -1,21 +1,55 @@
-import { eq, gte, lte, and } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
+import mysql from "mysql2/promise";
 import { InsertUser, users, servers, logs, logSources, logFilters, apiKeys, logStatistics, InsertServer, InsertLog, InsertLogSource, InsertLogFilter, InsertApiKey, InsertLogStatistic } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
+let _pool: mysql.Pool | null = null;
 
-// Lazily create the drizzle instance so local tooling can run without a DB.
+// Connection pool configuration for handling concurrent requests
+const POOL_CONFIG = {
+  waitForConnections: true,
+  connectionLimit: 10, // Máximo de conexões simultâneas
+  queueLimit: 0, // Sem limite de fila
+  enableKeepAlive: true,
+  keepAliveInitialDelayMs: 0,
+};
+
+// Lazily create the drizzle instance with connection pooling
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      _db = drizzle(process.env.DATABASE_URL);
+      // Parse DATABASE_URL to extract connection details
+      const url = new URL(process.env.DATABASE_URL);
+      
+      // Create connection pool for better concurrency handling
+      if (!_pool) {
+        _pool = mysql.createPool({
+          host: url.hostname,
+          user: url.username,
+          password: url.password,
+          database: url.pathname.slice(1),
+          port: url.port ? parseInt(url.port) : 3306,
+          ...POOL_CONFIG,
+        });
+      }
+
+      _db = drizzle(_pool);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
     }
   }
   return _db;
+}
+
+// Graceful shutdown - close pool connections
+export async function closeDb() {
+  if (_pool) {
+    await _pool.end();
+    _pool = null;
+    _db = null;
+  }
 }
 
 export async function upsertUser(user: InsertUser): Promise<void> {
@@ -84,237 +118,248 @@ export async function getUserByOpenId(openId: string) {
     return undefined;
   }
 
+  const { eq } = await import("drizzle-orm");
   const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
 
   return result.length > 0 ? result[0] : undefined;
 }
 
-/**
- * Server queries
- */
-export async function createServer(server: InsertServer) {
+// ===== SERVERS =====
+export async function createServer(data: InsertServer) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(servers).values(server);
+
+  const result = await db.insert(servers).values(data);
   return result;
+}
+
+export async function listServers() {
+  const db = await getDb();
+  if (!db) return [];
+
+  return await db.select().from(servers);
 }
 
 export async function getServerById(id: number) {
   const db = await getDb();
-  if (!db) throw new Error("Database not available");
+  if (!db) return null;
+
+  const { eq } = await import("drizzle-orm");
   const result = await db.select().from(servers).where(eq(servers.id, id)).limit(1);
-  return result.length > 0 ? result[0] : undefined;
+  return result.length > 0 ? result[0] : null;
 }
 
-export async function getAllServers() {
+// ===== LOGS =====
+export async function createLog(data: InsertLog) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  return await db.select().from(servers);
-}
 
-/**
- * Validate if a request IP is allowed for a server
- * If server has ipAddress defined, only that IP is allowed
- * If server has no ipAddress, any IP is allowed
- * If server doesn't exist, allow (for testing/dynamic servers)
- */
-export async function validateServerIP(serverId: number, requestIP: string): Promise<boolean> {
-  const server = await getServerById(serverId);
-  if (!server) return true; // Allow if server doesn't exist (for testing)
-  
-  // If no IP is configured, accept any IP
-  if (!server.ipAddress) return true;
-  
-  // If IP is configured, only accept that IP
-  return server.ipAddress === requestIP;
-}
-
-/**
- * Log queries
- */
-export async function createLog(log: InsertLog) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  const result = await db.insert(logs).values(log);
-  return result;
-}
-
-export async function getLogsByServerId(serverId: number, limit: number = 100, offset: number = 0) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  return await db.select().from(logs).where(eq(logs.serverId, serverId)).limit(limit).offset(offset);
+  return await db.insert(logs).values(data);
 }
 
 export async function searchLogs(filters: {
   serverId?: number;
   level?: string;
   source?: string;
-  startTime?: number;
-  endTime?: number;
+  startDate?: Date;
+  endDate?: Date;
   searchText?: string;
   limit?: number;
   offset?: number;
 }) {
   const db = await getDb();
-  if (!db) throw new Error("Database not available");
+  if (!db) return [];
+
+  const { eq, and, gte, lte, like, or } = await import("drizzle-orm");
   
-  let query = db.select().from(logs);
   const conditions = [];
-  
-  if (filters.serverId) conditions.push(eq(logs.serverId, filters.serverId));
-  if (filters.level) conditions.push(eq(logs.level, filters.level as any));
-  if (filters.source) conditions.push(eq(logs.source, filters.source));
-  if (filters.startTime) conditions.push(gte(logs.timestamp, filters.startTime));
-  if (filters.endTime) conditions.push(lte(logs.timestamp, filters.endTime));
-  
-  // Note: Full-text search would require additional setup; this is basic filtering
-  
-  const limit = filters.limit || 100;
-  const offset = filters.offset || 0;
-  
-  return await query.limit(limit).offset(offset);
+
+  if (filters.serverId) {
+    conditions.push(eq(logs.serverId, filters.serverId));
+  }
+  if (filters.level) {
+    conditions.push(eq(logs.level, filters.level));
+  }
+  if (filters.source) {
+    conditions.push(eq(logs.source, filters.source));
+  }
+  if (filters.startDate) {
+    conditions.push(gte(logs.timestamp, filters.startDate.getTime()));
+  }
+  if (filters.endDate) {
+    conditions.push(lte(logs.timestamp, filters.endDate.getTime()));
+  }
+  if (filters.searchText) {
+    conditions.push(like(logs.message, `%${filters.searchText}%`));
+  }
+
+  let query = db.select().from(logs);
+
+  if (conditions.length > 0) {
+    query = query.where(and(...conditions));
+  }
+
+  query = query.orderBy((t) => t.timestamp).limit(filters.limit || 100).offset(filters.offset || 0);
+
+  return await query;
 }
 
-/**
- * Log Source queries
- */
-export async function createLogSource(source: InsertLogSource) {
+export async function listLogsByServer(serverId: number, limit = 100, offset = 0) {
   const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  const result = await db.insert(logSources).values(source);
-  return result;
+  if (!db) return [];
+
+  const { eq } = await import("drizzle-orm");
+  return await db
+    .select()
+    .from(logs)
+    .where(eq(logs.serverId, serverId))
+    .orderBy((t) => t.timestamp)
+    .limit(limit)
+    .offset(offset);
 }
 
-export async function getLogSourcesByServerId(serverId: number) {
+// ===== LOG SOURCES =====
+export async function createLogSource(data: InsertLogSource) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+
+  return await db.insert(logSources).values(data);
+}
+
+export async function listLogSourcesByServer(serverId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const { eq } = await import("drizzle-orm");
   return await db.select().from(logSources).where(eq(logSources.serverId, serverId));
 }
 
-/**
- * Log Filter queries
- */
-export async function createLogFilter(filter: InsertLogFilter) {
+// ===== LOG FILTERS =====
+export async function createLogFilter(data: InsertLogFilter) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(logFilters).values(filter);
-  return result;
+
+  return await db.insert(logFilters).values(data);
 }
 
-export async function getLogFiltersByUserId(userId: number) {
+export async function listLogFilters() {
   const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  return await db.select().from(logFilters).where(eq(logFilters.userId, userId));
+  if (!db) return [];
+
+  return await db.select().from(logFilters);
 }
 
-// TODO: add feature queries here as your schema grows.
-
-/**
- * API Key queries
- */
-export async function createApiKey(apiKey: InsertApiKey) {
+// ===== API KEYS =====
+export async function createApiKey(data: InsertApiKey) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(apiKeys).values(apiKey);
-  return result;
+
+  return await db.insert(apiKeys).values(data);
 }
 
 export async function getApiKeyByKey(key: string) {
   const db = await getDb();
-  if (!db) throw new Error("Database not available");
+  if (!db) return null;
+
+  const { eq } = await import("drizzle-orm");
   const result = await db.select().from(apiKeys).where(eq(apiKeys.key, key)).limit(1);
-  return result.length > 0 ? result[0] : undefined;
+  return result.length > 0 ? result[0] : null;
 }
 
-export async function getApiKeysByServerId(serverId: number) {
+export async function listApiKeysByServer(serverId: number) {
   const db = await getDb();
-  if (!db) throw new Error("Database not available");
+  if (!db) return [];
+
+  const { eq } = await import("drizzle-orm");
   return await db.select().from(apiKeys).where(eq(apiKeys.serverId, serverId));
 }
 
-export async function updateApiKeyLastUsed(id: number) {
+// ===== LOG STATISTICS =====
+export async function getOrCreateLogStatistic(serverId: number, date: Date) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  return await db.update(apiKeys).set({ lastUsedAt: Math.floor(Date.now() / 1000) }).where(eq(apiKeys.id, id));
-}
 
-/**
- * Log Statistics queries
- */
-export async function getOrCreateLogStatistic(serverId: number, date: string) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
+  const { eq, and } = await import("drizzle-orm");
   
-  const existing = await db.select().from(logStatistics)
-    .where(and(eq(logStatistics.serverId, serverId), eq(logStatistics.date, date)))
+  const dateStr = date.toISOString().split('T')[0];
+  const result = await db
+    .select()
+    .from(logStatistics)
+    .where(and(eq(logStatistics.serverId, serverId), eq(logStatistics.date, dateStr)))
     .limit(1);
-  
-  if (existing.length > 0) {
-    return existing[0];
+
+  if (result.length > 0) {
+    return result[0];
   }
-  
-  await db.insert(logStatistics).values({
+
+  // Create new statistic
+  const newStat: InsertLogStatistic = {
     serverId,
-    date,
+    date: dateStr,
     totalLogs: 0,
     debugCount: 0,
     infoCount: 0,
     warningCount: 0,
     errorCount: 0,
     criticalCount: 0,
-  });
-  
-  const created = await db.select().from(logStatistics)
-    .where(and(eq(logStatistics.serverId, serverId), eq(logStatistics.date, date)))
-    .limit(1);
-  
-  return created[0];
-}
-
-export async function incrementLogStatistic(serverId: number, date: string, level: string) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  const stat = await getOrCreateLogStatistic(serverId, date);
-  
-  const updates: Record<string, any> = {
-    totalLogs: (stat.totalLogs || 0) + 1,
   };
-  
-  switch (level) {
-    case 'debug':
-      updates.debugCount = (stat.debugCount || 0) + 1;
-      break;
-    case 'info':
-      updates.infoCount = (stat.infoCount || 0) + 1;
-      break;
-    case 'warning':
-      updates.warningCount = (stat.warningCount || 0) + 1;
-      break;
-    case 'error':
-      updates.errorCount = (stat.errorCount || 0) + 1;
-      break;
-    case 'critical':
-      updates.criticalCount = (stat.criticalCount || 0) + 1;
-      break;
-  }
-  
-  return await db.update(logStatistics)
-    .set(updates)
-    .where(and(eq(logStatistics.serverId, serverId), eq(logStatistics.date, date)));
+
+  await db.insert(logStatistics).values(newStat);
+  return newStat;
 }
 
-export async function getLogStatisticsByServerId(serverId: number, days: number = 7) {
+export async function incrementLogStatistic(serverId: number, date: Date, level: string) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+
+  const { eq, and, sql } = await import("drizzle-orm");
+  
+  const dateStr = date.toISOString().split('T')[0];
+  
+  const levelColumn = {
+    debug: logStatistics.debugCount,
+    info: logStatistics.infoCount,
+    warning: logStatistics.warningCount,
+    error: logStatistics.errorCount,
+    critical: logStatistics.criticalCount,
+  }[level] || logStatistics.infoCount;
+
+  await db
+    .update(logStatistics)
+    .set({
+      totalLogs: sql`${logStatistics.totalLogs} + 1`,
+      [levelColumn.name]: sql`${levelColumn} + 1`,
+    })
+    .where(and(eq(logStatistics.serverId, serverId), eq(logStatistics.date, dateStr)));
+}
+
+export async function getStatisticsForLastDays(serverId: number, days: number = 7) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const { eq, gte } = await import("drizzle-orm");
   
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - days);
   const startDateStr = startDate.toISOString().split('T')[0];
+
+  return await db
+    .select()
+    .from(logStatistics)
+    .where(and(eq(logStatistics.serverId, serverId), gte(logStatistics.date, startDateStr)))
+    .orderBy((t) => t.date);
+}
+
+// Validação de IP para ingestão de logs
+export async function validateServerIP(serverId: number, clientIP: string): Promise<boolean> {
+  const server = await getServerById(serverId);
   
-  return await db.select().from(logStatistics)
-    .where(and(
-      eq(logStatistics.serverId, serverId),
-      gte(logStatistics.date, startDateStr)
-    ));
+  // Se servidor não existe, aceita (para testes/servidores dinâmicos)
+  if (!server) return true;
+  
+  // Se servidor não tem IP configurado, aceita qualquer IP
+  if (!server.ipAddress) return true;
+  
+  // Se servidor tem IP, valida
+  return server.ipAddress === clientIP;
 }
