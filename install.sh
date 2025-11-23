@@ -12,6 +12,23 @@ echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}Log Centralizado - Instalação Automática${NC}"
 echo -e "${GREEN}========================================${NC}\n"
 
+# Definir diretório de instalação
+INSTALL_DIR="/opt/log-centralizado"
+REPO_URL="https://github.com/fadv-tech/Log-Central.git"
+
+# 0. Clonar repositório (se não existir)
+echo -e "${YELLOW}[0/8] Clonando repositório...${NC}"
+if [ ! -d "$INSTALL_DIR" ]; then
+    sudo mkdir -p "$INSTALL_DIR"
+    sudo git clone "$REPO_URL" "$INSTALL_DIR"
+    sudo chown -R $(whoami):$(whoami) "$INSTALL_DIR"
+    echo -e "${GREEN}✓ Repositório clonado${NC}\n"
+else
+    echo -e "${GREEN}✓ Repositório já existe${NC}\n"
+fi
+
+cd "$INSTALL_DIR"
+
 # 1. Atualizar sistema
 echo -e "${YELLOW}[1/8] Atualizando dependências do sistema...${NC}"
 sudo apt-get update -qq
@@ -84,7 +101,7 @@ echo -e "${YELLOW}   Password: $DB_PASSWORD${NC}\n"
 
 # 7. Instalar dependências do projeto
 echo -e "${YELLOW}[7/8] Instalando dependências do projeto...${NC}"
-cd "$(dirname "$0")"
+cd "$INSTALL_DIR"
 pnpm install -q > /dev/null 2>&1
 echo -e "${GREEN}✓ Dependências instaladas${NC}\n"
 
@@ -92,15 +109,17 @@ echo -e "${GREEN}✓ Dependências instaladas${NC}\n"
 echo -e "${YELLOW}[8/8] Configurando aplicação...${NC}"
 
 # Criar arquivo .env
-cat > .env << EOF
+cat > "$INSTALL_DIR/.env" << EOF
 DATABASE_URL="mysql://$DB_USER:$DB_PASSWORD@localhost:3306/$DB_NAME"
 JWT_SECRET="$(openssl rand -base64 32)"
 VITE_APP_TITLE="Log Centralizado"
 VITE_APP_LOGO="/logo.svg"
 NODE_ENV="production"
+PORT="3000"
 EOF
 
 # Rodar migrações
+cd "$INSTALL_DIR"
 pnpm db:push > /dev/null 2>&1 || true
 
 echo -e "${GREEN}✓ Aplicação configurada${NC}\n"
@@ -111,9 +130,9 @@ echo -e "${GREEN}✓ Instalação Concluída com Sucesso!${NC}"
 echo -e "${GREEN}========================================${NC}\n"
 
 echo -e "${YELLOW}Próximos passos:${NC}"
-echo -e "1. Inicie a aplicação: ${GREEN}pnpm dev${NC}"
-echo -e "2. Acesse em: ${GREEN}http://localhost:3000${NC}"
-echo -e "3. Credenciais do banco de dados foram salvas em ${GREEN}.env${NC}\n"
+echo -e "1. Entre no diretório: ${GREEN}cd $INSTALL_DIR${NC}"
+echo -e "2. Inicie a aplicação: ${GREEN}pnpm dev${NC}"
+echo -e "3. Acesse em: ${GREEN}http://localhost:3000${NC}\n"
 
 echo -e "${YELLOW}Informações do Banco de Dados:${NC}"
 echo -e "  Database: ${GREEN}$DB_NAME${NC}"
@@ -123,7 +142,15 @@ echo -e "  Host: ${GREEN}localhost${NC}"
 echo -e "  Port: ${GREEN}3306${NC}\n"
 
 echo -e "${YELLOW}Para iniciar o serviço em background:${NC}"
-echo -e "  ${GREEN}nohup pnpm dev > log_centralizado.log 2>&1 &${NC}\n"
+echo -e "  ${GREEN}cd $INSTALL_DIR && nohup pnpm dev > log_centralizado.log 2>&1 &${NC}\n"
 
 echo -e "${YELLOW}Para parar o serviço:${NC}"
 echo -e "  ${GREEN}pkill -f 'pnpm dev'${NC}\n"
+
+echo -e "${YELLOW}Para ver os logs:${NC}"
+echo -e "  ${GREEN}tail -f $INSTALL_DIR/log_centralizado.log${NC}\n"
+
+echo -e "${YELLOW}Documentação:${NC}"
+echo -e "  API Responses: https://github.com/fadv-tech/Log-Central/blob/main/API_RESPONSES.md"
+echo -e "  Performance: https://github.com/fadv-tech/Log-Central/blob/main/PERFORMANCE.md"
+echo -e "  Mikrotik Setup: https://github.com/fadv-tech/Log-Central/blob/main/MIKROTIK_SETUP.md\n"
