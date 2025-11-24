@@ -44,8 +44,8 @@ if ! command -v mysql &> /dev/null; then
     exit 1
 fi
 
-# Tentar conectar ao MySQL
-if ! mysql -u${DB_USER} -p${DB_PASSWORD} -e "SELECT 1" &> /dev/null; then
+# Tentar conectar ao MySQL com espaço correto na sintaxe
+if ! mysql -u "${DB_USER}" -p"${DB_PASSWORD}" -e "SELECT 1" &> /dev/null; then
     echo -e "${RED}❌ Não conseguiu conectar ao MySQL${NC}"
     echo "Verifique as credenciais ou inicie o MySQL com: sudo systemctl start mysql"
     exit 1
@@ -55,12 +55,11 @@ echo -e "${GREEN}✅ MySQL está rodando${NC}"
 echo ""
 
 # 3. Criar banco de dados se não existir
-echo -e "${YELLOW}🗄️  Criando banco de dados...${NC}"
-mysql -u${DB_USER} -p${DB_PASSWORD} << EOF
+echo -e "${YELLOW}🗄️  Criando banco de dados ${DB_NAME}...${NC}"
+mysql -u "${DB_USER}" -p"${DB_PASSWORD}" -h "${DB_HOST}" << EOF
 CREATE DATABASE IF NOT EXISTS ${DB_NAME};
-USE ${DB_NAME};
 EOF
-echo -e "${GREEN}✅ Banco de dados criado/verificado${NC}"
+echo -e "${GREEN}✅ Banco de dados ${DB_NAME} criado/verificado${NC}"
 
 echo ""
 
@@ -73,8 +72,12 @@ echo ""
 
 # 5. Executar migrations
 echo -e "${YELLOW}🗄️  Executando migrations do banco de dados...${NC}"
-pnpm db:push
-echo -e "${GREEN}✅ Migrations executadas${NC}"
+if pnpm db:push; then
+    echo -e "${GREEN}✅ Migrations executadas com sucesso${NC}"
+else
+    echo -e "${RED}⚠️  Erro ao executar migrations${NC}"
+    echo "Tente executar manualmente: pnpm db:push"
+fi
 
 echo ""
 
