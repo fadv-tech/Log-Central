@@ -28,7 +28,8 @@ export const appRouter = router({
   logs: router({
     ingest: publicProcedure
       .input((val: unknown) => {
-        if (typeof val !== 'object' || val === null) throw new Error('Invalid input');
+        console.log('[logs.ingest] Input recebido:', JSON.stringify(val));
+        if (typeof val !== 'object' || val === null) throw new Error('Invalid input: val is not an object or is null');
         const obj = val as Record<string, unknown>;
         return {
           apiKey: typeof obj.apiKey === 'string' ? obj.apiKey : undefined,
