@@ -25,6 +25,10 @@ echo "📦 Instalando dependências..."
 pnpm install
 
 echo ""
+echo "🗄️  Executando migrations do banco de dados..."
+pnpm drizzle-kit push
+
+echo ""
 echo "🎉 Setup concluído!"
 echo ""
 echo "Para iniciar a aplicação, execute:"
