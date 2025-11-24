@@ -92,16 +92,23 @@
 - [ ] Deletar servidor
 
 ### Configurações
-- [ ] Selecionar um servidor
-- [ ] Criar nova API Key
-- [ ] Copiar API Key
-- [ ] Mostrar/ocultar API Key
-- [ ] Listar API Keys do servidor
+- [x] Selecionar um servidor
+- [x] Criar nova API Key
+- [x] Copiar API Key
+- [x] Mostrar/ocultar API Key
+- [x] Listar API Keys do servidor
 - [ ] Criar Log Source
 - [ ] Listar Log Sources
 
+## 🔴 BUG CORRIGIDO: API Keys
+- [x] Problema: Frontend mostrava "undefined" ao copiar chave
+- [x] Causa: createApiKey retornava apenas resultado do insert, não o objeto completo
+- [x] Solução: Modificar createApiKey para retornar o objeto da chave criada
+- [x] Teste: Criar nova chave "Nova Chave Teste" e confirmar que aparece na lista
+- [x] Commit: 905bca1 - "Corrigir bug de API Keys: retornar chave completa ao frontend"
+
 ### Geral
-- [ ] Verificar se não há erros no console
-- [ ] Verificar se todos os dados persistem no banco
+- [x] Verificar se não há erros no console
+- [x] Verificar se todos os dados persistem no banco
 - [ ] Testar responsividade em mobile
 - [ ] Testar navegação entre páginas
