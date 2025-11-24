@@ -13,8 +13,8 @@ const LOG_SOURCES = ["syslog", "eventlog", "api", "custom"];
 
 export default function LogsSearch() {
   const [serverId, setServerId] = useState<number | undefined>();
-  const [level, setLevel] = useState<string>("");
-  const [source, setSource] = useState<string>("");
+  const [level, setLevel] = useState<string | undefined>();
+  const [source, setSource] = useState<string | undefined>();
   const [searchText, setSearchText] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -38,8 +38,8 @@ export default function LogsSearch() {
   const logsQuery = trpc.logs.search.useQuery(
     {
       serverId,
-      level: level || undefined,
-      source: source || undefined,
+      level,
+      source,
       startTime,
       endTime,
       searchText: searchText || undefined,
@@ -83,12 +83,11 @@ export default function LogsSearch() {
             {/* Nível */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Nível</label>
-              <Select value={level} onValueChange={setLevel}>
+              <Select value={level || ""} onValueChange={(val) => setLevel(val || undefined)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Todos os níveis" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todos</SelectItem>
                   {LOG_LEVELS.map((l) => (
                     <SelectItem key={l} value={l}>
                       {l.charAt(0).toUpperCase() + l.slice(1)}
@@ -101,12 +100,11 @@ export default function LogsSearch() {
             {/* Fonte */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Fonte</label>
-              <Select value={source} onValueChange={setSource}>
+              <Select value={source || ""} onValueChange={(val) => setSource(val || undefined)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Todas as fontes" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todas</SelectItem>
                   {LOG_SOURCES.map((s) => (
                     <SelectItem key={s} value={s}>
                       {s.charAt(0).toUpperCase() + s.slice(1)}
