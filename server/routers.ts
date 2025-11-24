@@ -2,6 +2,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
+import { z } from "zod";
 import { 
   createLog, searchLogs, getLogsByServerId, createServer, getAllServers, getServerById,
   createApiKey, getApiKeyByKey, getApiKeysByServerId, updateApiKeyLastUsed,
@@ -27,23 +28,19 @@ export const appRouter = router({
 
   logs: router({
     ingest: publicProcedure
-      .input((val: unknown) => {
-        console.log('[logs.ingest] Input recebido:', JSON.stringify(val));
-        if (typeof val !== 'object' || val === null) throw new Error('Invalid input: val is not an object or is null');
-        const obj = val as Record<string, unknown>;
-        return {
-          apiKey: typeof obj.apiKey === 'string' ? obj.apiKey : undefined,
-          serverId: typeof obj.serverId === 'number' ? obj.serverId : undefined,
-          clientIP: typeof obj.clientIP === 'string' ? obj.clientIP : undefined,
-          timestamp: typeof obj.timestamp === 'number' ? obj.timestamp : Date.now(),
-          level: typeof obj.level === 'string' ? obj.level : 'info',
-          source: typeof obj.source === 'string' ? obj.source : 'unknown',
-          message: typeof obj.message === 'string' ? obj.message : '',
-          metadata: typeof obj.metadata === 'string' ? obj.metadata : undefined,
-          tags: typeof obj.tags === 'string' ? obj.tags : undefined,
-        };
-      })
+      .input(z.object({
+        apiKey: z.string().optional(),
+        serverId: z.number().optional(),
+        clientIP: z.string().optional(),
+        timestamp: z.number().optional().default(() => Date.now()),
+        level: z.string().optional().default('info'),
+        source: z.string().optional().default('unknown'),
+        message: z.string().optional().default(''),
+        metadata: z.string().optional(),
+        tags: z.string().optional(),
+      }))
       .mutation(async ({ input, ctx }) => {
+        console.log('[logs.ingest] Input validado:', input);
         let serverId = input.serverId;
         
         // Get client IP from input or request headers
