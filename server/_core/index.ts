@@ -8,8 +8,7 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
-import { closeDb } from "../db";
-import { logRequest, logResponse, logError, logWarn, cleanOldLogs } from "./logger";
+// Logging removed - using console directly for simplicity
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -45,19 +44,7 @@ async function startServer() {
 
   // Request logging middleware
   app.use((req, res, next) => {
-    const startTime = Date.now();
-    const ip = req.ip || req.socket.remoteAddress || "unknown";
-    
-    logRequest(req.method, req.path, ip);
-    
-    // Interceptar response para logar
-    const originalSend = res.send;
-    res.send = function(data) {
-      const duration = Date.now() - startTime;
-      logResponse(req.method, req.path, res.statusCode, duration, ip);
-      return originalSend.call(this, data);
-    };
-    
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
     next();
   });
 
@@ -118,12 +105,9 @@ async function startServer() {
 
   // Global error handler
   app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-    const ip = req.ip || req.socket.remoteAddress || "unknown";
-    const statusCode = err.statusCode || 500;
+    console.error(`[ERROR] ${req.method} ${req.path}:`, err);
     
-    logError(req.method, req.path, statusCode, err, ip);
-    
-    res.status(statusCode).json({
+    res.status(err.statusCode || 500).json({
       error: "Internal server error",
       message: process.env.NODE_ENV === "development" ? err.message : undefined,
       timestamp: new Date().toISOString(),
@@ -144,23 +128,15 @@ async function startServer() {
     console.log(`[Server] Environment: ${process.env.NODE_ENV || "development"}`);
     console.log(`[Server] Compression: enabled`);
     console.log(`[Server] Rate limiting: enabled`);
-    console.log(`[Server] Connection pooling: enabled (max 50 concurrent connections)`);
-    console.log(`[Server] Request logging: enabled`);
-    console.log(`[Server] Logs directory: ./logs`);
   });
-
-  // Clean old logs on startup
-  cleanOldLogs(7);
 
   // ===== GRACEFUL SHUTDOWN =====
 
   const gracefulShutdown = async (signal: string) => {
-    logWarn(`Received ${signal}, shutting down gracefully...`);
+    console.log(`[Server] Received ${signal}, shutting down gracefully...`);
     
-    server.close(async () => {
-      logWarn("HTTP server closed");
-      await closeDb();
-      logWarn("Database connections closed");
+    server.close(() => {
+      console.log("[Server] HTTP server closed");
       process.exit(0);
     });
 
