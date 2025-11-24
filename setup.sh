@@ -14,8 +14,8 @@ if [ ! -f .env ]; then
     
     echo "✅ Arquivo .env criado com sucesso!"
     echo ""
-    echo "📋 Configuração padrão:"
-    cat .env
+    echo "📋 Configuração:"
+    grep DATABASE_URL .env
 else
     echo "✅ Arquivo .env já existe"
 fi
